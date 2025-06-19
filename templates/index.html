@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Currency Converter</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Theme Initialization -->
+  <script>
+    if (
+      localStorage.theme === 'dark' ||
+      (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    ) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  </script>
+
+  <style>
+    body {
+      --bg-url: url('/static/images/background.png');
+    }
+    body::before {
+      content: "";
+      position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-image: var(--bg-url);
+      background-size: cover;
+      background-position: center;
+      opacity: 0.15;
+      filter: blur(4px);
+      z-index: -1;
+    }
+    .fade-scale { transition: all 0.5s ease; transform: scale(0.9); opacity: 0; }
+    .fade-scale.show { transform: scale(1); opacity: 1; }
+    .spinner {
+      border: 4px solid rgba(0,0,0,0.1); width: 24px; height: 24px;
+      border-radius: 50%; border-left-color: #3490dc;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .flag-option {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .flag-option img {
+      width: 20px;
+      height: 14px;
+      object-fit: cover;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-800 p-4 font-sans">
+  <button id="btnTheme"
+          class="fixed top-4 right-4 bg-white dark:bg-gray-700 p-2 rounded-full shadow text-xl">
+    <span id="themeIcon">🌙</span>
+  </button>
+
+  <div class="bg-white/90 dark:bg-gray-900 backdrop-blur-xl shadow-2xl rounded-3xl p-8 w-full max-w-md border border-blue-200 dark:border-gray-700">
+    <h1 class="text-3xl font-bold text-center text-blue-800 dark:text-blue-300 mb-6">💱 Currency Converter</h1>
+
+    <div class="space-y-5">
+      <!-- From Currency -->
+      <div>
+        <label class="block mb-1 font-medium text-blue-700 dark:text-blue-300">From Currency</label>
+        <select id="base" class="w-full p-2 rounded border border-blue-300 bg-blue-50 dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 outline-none">
+          {% for curr in currencies %}
+            {% set code = curr.split('-')[0] %}
+            {% set name = curr.split('-')[1] %}
+            <option value="{{ code }}" data-img="/static/flags/{{code|lower}}.png">
+              {{ code }} – {{ name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Swap -->
+      <div class="flex justify-center">
+        <button onclick="swapCurrencies()"
+                class="bg-blue-500 text-white px-3 py-1 rounded-full hover:bg-blue-600 transition text-sm shadow">🔄 Swap</button>
+      </div>
+
+      <!-- To Currency -->
+      <div>
+        <label class="block mb-1 font-medium text-blue-700 dark:text-blue-300">To Currency</label>
+        <select id="target" class="w-full p-2 rounded border border-blue-300 bg-blue-50 dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 outline-none">
+          {% for curr in currencies %}
+            {% set code = curr.split('-')[0] %}
+            {% set name = curr.split('-')[1] %}
+            <option value="{{ code }}" data-img="/static/flags/{{code|lower}}.png">
+              🌐 {{ code }} – {{ name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Amount -->
+      <div>
+        <label class="block mb-1 font-medium text-blue-700 dark:text-blue-300">Amount</label>
+        <input id="amount" type="number" placeholder="Enter amount"
+               class="w-full p-2 rounded border border-blue-300 focus:ring-2 focus:ring-blue-500 outline-none dark:bg-gray-800 dark:text-white" />
+      </div>
+
+      <!-- Convert Button -->
+      <button onclick="convertCurrency()"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl shadow-lg transform hover:scale-105 transition duration-300 text-lg font-semibold">
+        Convert 💸
+      </button>
+
+      <!-- Spinner / Result / Rate / Error -->
+      <div id="loader" class="text-center mt-2 hidden"><div class="spinner mx-auto"></div></div>
+      <div id="rateDisplay" class="text-center text-md text-gray-600 dark:text-gray-300 mt-2"></div>
+      <div id="result" class="text-center text-xl font-bold text-blue-700 dark:text-blue-300 mt-4 fade-scale"></div>
+      <div id="error" class="text-center text-red-600 dark:text-red-400 font-medium mt-2 hidden"></div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Theme toggle
+      const themeBtn = document.getElementById('btnTheme');
+      const themeIcon = document.getElementById('themeIcon');
+      const setThemeIcon = () => themeIcon.textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+      themeBtn.onclick = () => {
+        document.documentElement.classList.toggle('dark');
+        localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+        setThemeIcon();
+      };
+      setThemeIcon();
+
+      // Use flag icons in dropdown
+      document.querySelectorAll('select').forEach(sel => {
+        sel.addEventListener('change', () => styleSelectOption(sel));
+        styleSelectOption(sel);
+      });
+    });
+
+    function styleSelectOption(select) {
+      const imgPath = select.selectedOptions[0].getAttribute('data-img');
+      select.style.backgroundImage = `url('${imgPath}')`;
+      select.style.backgroundRepeat = 'no-repeat';
+      select.style.backgroundSize = '20px 14px';
+      select.style.backgroundPosition = '8px center';
+      select.style.paddingLeft = '36px';
+    }
+
+    function swapCurrencies() {
+      const b = document.getElementById('base'), t = document.getElementById('target');
+      [b.value, t.value] = [t.value, b.value];
+      styleSelectOption(b);
+      styleSelectOption(t);
+    }
+
+    async function convertCurrency() {
+      const base = document.getElementById('base').value;
+      const target = document.getElementById('target').value;
+      const amount = +document.getElementById('amount').value;
+      const resEl = document.getElementById('result');
+      const errEl = document.getElementById('error');
+      const ld = document.getElementById('loader');
+      const rateEl = document.getElementById('rateDisplay');
+
+      resEl.classList.remove('show');
+      resEl.textContent = '';
+      errEl.textContent = ''; errEl.classList.add('hidden');
+      ld.classList.remove('hidden');
+      rateEl.textContent = '';
+
+      if (!amount || amount <= 0) {
+        ld.classList.add('hidden');
+        errEl.textContent = 'Please enter a valid amount.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      const resp = await fetch('/convert', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ base, target, amount })
+      });
+      const data = await resp.json();
+      ld.classList.add('hidden');
+
+      if (data.error) {
+        errEl.textContent = data.error;
+        errEl.classList.remove('hidden');
+      } else {
+        resEl.textContent = data.converted;
+        resEl.classList.add('show');
+        const rate = (+data.rate).toFixed(4);
+        rateEl.textContent = `1 ${base} = ${rate} ${target}`;
+      }
+    }
+  </script>
+</body>
+</html>
